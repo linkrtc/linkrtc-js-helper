@@ -1,0 +1,21 @@
+{
+  "name": "linkrtc-js-helper",
+  "description": "A javascript helper library for linrtc.com",
+  "main": "linkrtc.js",
+  "moduleType": [],
+  "license": "MIT",
+  "homepage": "",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "webrtc-adapter": "gh-pages"
+  },
+  "devDependencies": {
+    "webrtc-adapter": "gh-pages"
+  }
+}

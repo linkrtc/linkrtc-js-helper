@@ -49,6 +49,67 @@ class LinkRtcClient {
     return pendingRequest === undefined ? null : pendingRequest;
   }
 
+  _onmessage(message) {
+      let data = JSON.parse(message.data);
+      if ('result' in data) {
+        if (data.id) {
+          let pendingRequest = this._popPendingRequest(data.id);
+          if (pendingRequest) {
+            if (pendingRequest.timeoutID)
+              clearTimeout(pendingRequest.timeoutID);
+            pendingRequest.resolve(data.result);
+          }
+        }
+      } else if ('error' in data) {
+        if (data.id) {
+          let pendingRequest = this._popPendingRequest(data.id);
+          if (pendingRequest) {
+            if (pendingRequest.timeoutID)
+              clearTimeout(pendingRequest.timeoutID);
+            pendingRequest.reject(new LinkRtcRpcError(data.error.code, data.error.message));
+          }
+        }
+      } else if ('method' in data) {
+        if (data.method == 'onCallAnswered') {
+          let cid = data.params[0];
+          let remoteSdp = data.params[1];
+          let call = this._calls[cid];
+          // 接听！！！
+          this._pc.setRemoteDescription(
+            new RTCSessionDescription({
+              type: 'answer',
+              sdp: remoteSdp
+            }), // SDP
+            () => { // successCallback
+              if (call)
+                if (call._onAnswer) // 远端接听的回掉！！
+                  call._onAnswer(remoteSdp);
+            },
+            errorInfo => { // errorCallback
+              // TODO: 错误处理
+              console.error(errorInfo);
+            }
+          );
+        } else if (data.method == 'onCallReleased') {
+          let cid = data.params[0];
+          let call = this._calls[cid];
+          delete this._calls[cid];
+          if (call)
+            if (call._onRelease)
+              call._onRelease();
+        } else if (data.method == 'onCallStateChanged') {
+          let cid = data.params[0];
+          let state = data.params[1];
+          let call = this._calls[cid];
+          if (call)
+            if (call._onStateChange)
+              call._onStateChange(state);
+        } else {
+          throw new Error(`unknown method ""${data.method}`);
+        }
+      }
+  }
+
   static makeID() {
     return (Date.now().toString(36) + Math.random().toString(36).substr(2, 5)).toUpperCase();
   }
@@ -64,53 +125,7 @@ class LinkRtcClient {
   connect() {
     return new Promise((resolve, reject) => {
       this._webSocket = new WebSocket(this._url);
-      this._webSocket.onmessage = message => {
-        let data = JSON.parse(message.data);
-        if ('result' in data) {
-          if (data.id) {
-            let pendingRequest = this._popPendingRequest(data.id);
-            if (pendingRequest) {
-              if (pendingRequest.timeoutID)
-                clearTimeout(pendingRequest.timeoutID);
-              pendingRequest.resolve(data.result);
-            }
-          }
-        } else if ('error' in data) {
-          if (data.id) {
-            let pendingRequest = this._popPendingRequest(data.id);
-            if (pendingRequest) {
-              if (pendingRequest.timeoutID)
-                clearTimeout(pendingRequest.timeoutID);
-              pendingRequest.reject(new LinkRtcRpcError(data.error.code, data.error.message));
-            }
-          }
-        } else if ('method' in data) {
-          if (data.method == 'onCallAnswered') {
-            let cid = data.params[0];
-            let remoteSdp = data.params[1];
-            let call = this._calls[cid];
-            if (call)
-              if (call._onAnswer)
-                call._onAnswer(remoteSdp);
-          } else if (data.method == 'onCallReleased') {
-            let cid = data.params[0];
-            let call = this._calls[cid];
-            delete this._calls[cid];
-            if (call)
-              if (call._onRelease)
-                call._onRelease();
-          } else if (data.method == 'onCallStateChanged') {
-            let cid = data.params[0];
-            let state = data.params[1];
-            let call = this._calls[cid];
-            if (call)
-              if (call._onStateChange)
-                call._onStateChange(state);
-          } else {
-            throw new Error(`unknown method ""${data.method}`);
-          }
-        }
-      };
+      this._webSocket.onmessage = this._onmessage.bind(this);
       this._webSocket.onclose = close => {
         this._webSocket = null;
         reject(close);
@@ -178,7 +193,7 @@ class LinkRtcClient {
     });
   }
 
-  prepareRtc(configuration, constraints={}) {
+  prepareRtc(configuration, constraints = {}) {
     return new Promise((resolve, reject) => {
       let pcConstraints = {};
       let mediaOptions = {
@@ -199,8 +214,15 @@ class LinkRtcClient {
             if (!event.candidate) { // Again crate offer, after ICE OK
               pc.createOffer(
                 desc => {
-                  pc.setLocalDescription(desc);
-                  resolve();
+                  pc.setLocalDescription(
+                    desc, // sessionDescription
+                    () => { //successCallback
+                      resolve();
+                    },
+                    errorInfo => { // errorCallback
+                      reject(errorInfo);
+                    }
+                  );
                 },
                 error => {
                   reject(error);

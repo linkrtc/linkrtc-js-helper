@@ -19,15 +19,15 @@ class LinkRtcRpcError extends LinkRtcBaseError {
 
 
 class LinkRtcCall {
-  constructor(cid, onAnswer = null, onRelease = null, onStateChange = null) {
-    this._cid = cid;
+  constructor(data, onAnswer = null, onRelease = null, onStateChange = null) {
+    this._data = data;
     this._onAnswer = onAnswer;
     this._onRelease = onRelease;
     this._onStateChange = onStateChange;
   }
 
-  get cid() {
-    return this._cid;
+  get data() {
+    return this._data;
   }
 }
 
@@ -38,7 +38,7 @@ class LinkRtcClient {
     this._webSocket = null;
     this._pendingRequests = {};
     this._calls = {};
-    this._localPc = null;
+    this._pc = null;
   }
 
   _popPendingRequest(requestID) {
@@ -155,9 +155,9 @@ class LinkRtcClient {
   makeCall(to, onAnswer = null, onRelease = null, onStateChange = null) {
     to = String(to || '');
     return new Promise((resolve, reject) => {
-      this.request('makeCall', [this._localPc.localDescription.sdp, to])
-        .then(cid => {
-          let call = this._calls[cid] = new LinkRtcCall(cid, onAnswer, onRelease, onStateChange);
+      this.request('makeCall', [this._pc.localDescription.sdp, to])
+        .then(callData => {
+          let call = this._calls[callData.cid] = new LinkRtcCall(callData, onAnswer, onRelease, onStateChange);
           resolve(call);
         })
         .catch(error => {
@@ -168,7 +168,7 @@ class LinkRtcClient {
 
   dropCall(call) {
     return new Promise((resolve, reject) => {
-      this.request('dropCall', [call.cid])
+      this.request('dropCall', [call.data.cid])
         .then(result => {
           resolve(result);
         })
@@ -193,7 +193,7 @@ class LinkRtcClient {
       navigator.getUserMedia(
         mediaOptions, // navigator.getUserMedia options
         stream => { // navigator.getUserMedia on-success
-          pc = this._localPc = new RTCPeerConnection(configuration, constraints);
+          pc = this._pc = new RTCPeerConnection(configuration, constraints);
           pc.addStream(stream);
           pc.onicecandidate = ev => {
             if (!event.candidate) { // Again crate offer, after ICE OK

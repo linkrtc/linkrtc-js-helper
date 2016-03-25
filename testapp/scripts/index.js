@@ -9,13 +9,29 @@
   document.querySelector('button#close').onclick = close;
 
   document.querySelector('button#InitClient').onclick = () => {
-    c = new LinkRtcClient('ws://192.168.56.102:8080/capi/1?password=1');
+    let wsUrl = 'ws://192.168.56.102:8080/capi/1?password=1';
+    console.debug(`Connect ${wsUrl}...`);
+    c = new LinkRtcClient(wsUrl);
     c.connect()
       .then(() => {
         console.debug('Connected!');
+        let rtcConfig = {
+          iceServers: [{
+            urls: ["stun:stun.web2sip.hes86.net"]
+          }],
+          iceTransportPolicy: 'all',
+        };
+        console.debug('prepareRtc ...');
+        c.prepareRtc(rtcConfig)
+          .then(() => {
+            console.debug('prepareRtc: OK!');
+          })
+          .catch(error => {
+            console.log('prepareRtc: ', error)
+          });
       })
       .catch(error => {
-        console.error(error);
+        console.error('connect:', error);
       });
   };
 
@@ -44,7 +60,6 @@
   document.querySelector('button#makeCall').onclick = () => {
     console.log('makeCall ...');
     c.makeCall(
-        sdp,
         'sip:192.168.56.1',
         remoteSdp => {
           console.log('onAnswer: ', remoteSdp);
@@ -57,7 +72,7 @@
         }
       )
       .then(result => {
-        console.log('makeCall => ', result);
+        console.log(`makeCall => cid=${result.cid}`);
         call = result;
       })
       .catch(error => {
@@ -66,7 +81,7 @@
   }
 
   document.querySelector('button#dropCall').onclick = () => {
-    console.log('dropCall ...');
+    console.log(`dropCall (cid=${call.cid})...`);
     c.dropCall(call)
       .then(result => {
         console.log('dropCall => ', result);

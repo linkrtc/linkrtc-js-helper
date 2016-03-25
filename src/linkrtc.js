@@ -10,7 +10,7 @@ class LinkRtcBaseError extends Error {
 
 
 class LinkRtcRpcError extends LinkRtcBaseError {
-  constructor(code, message='') {
+  constructor(code, message = '') {
     code = parseInt(code);
     super(message);
     this.code = code;
@@ -38,7 +38,7 @@ class LinkRtcClient {
     this._webSocket = null;
     this._pendingRequests = {};
     this._calls = {};
-    this._localSdp = '';
+    this._localPc = null;
   }
 
   _popPendingRequest(requestID) {
@@ -152,9 +152,10 @@ class LinkRtcClient {
     });
   }
 
-  makeCall(localSdp, toUrl, onAnswer = null, onRelease = null, onStateChange = null) {
+  makeCall(to, onAnswer = null, onRelease = null, onStateChange = null) {
+    to = String(to || '');
     return new Promise((resolve, reject) => {
-      this.request('makeCall', [localSdp.toString(), toUrl.toString()])
+      this.request('makeCall', [this._localPc.localDescription.sdp, to])
         .then(cid => {
           let call = this._calls[cid] = new LinkRtcCall(cid, onAnswer, onRelease, onStateChange);
           resolve(call);
@@ -177,11 +178,52 @@ class LinkRtcClient {
     });
   }
 
-  prepareMedia(options = {
-    audio: true,
-    video: false
-  }, iceServers = []) {
-
+  prepareRtc(configuration, constraints={}) {
+    return new Promise((resolve, reject) => {
+      let pcConstraints = {};
+      let mediaOptions = {
+        audio: true,
+        video: false
+      };
+      let offerOptions = {
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: false,
+      };
+      let pc = null;
+      navigator.getUserMedia(
+        mediaOptions, // navigator.getUserMedia options
+        stream => { // navigator.getUserMedia on-success
+          pc = this._localPc = new RTCPeerConnection(configuration, constraints);
+          pc.addStream(stream);
+          pc.onicecandidate = ev => {
+            if (!event.candidate) { // Again crate offer, after ICE OK
+              pc.createOffer(
+                desc => {
+                  pc.setLocalDescription(desc);
+                  resolve();
+                },
+                error => {
+                  reject(error);
+                },
+                offerOptions
+              );
+            }
+          };
+          pc.createOffer(
+            desc => { // createOffer on-success
+              pc.setLocalDescription(desc);
+            },
+            error => { // createOffer on-error
+              reject(error);
+            },
+            offerOptions // createOffer options
+          );
+        },
+        error => { // navigator.getUserMedia on-error
+          reject(error);
+        }
+      );
+    });
   }
 
 }

@@ -220,9 +220,8 @@ class LinkRtcClient {
                     pc = this._pc = new RTCPeerConnection(configuration, constraints);
                     pc.addStream(stream);
                     pc.onicecandidate = event => {
-                        if (!event.candidate) { // Local ICE candidate OK!
+                        if (!event.candidate) // Local ICE candidate OK!
                             resolve();
-                        }
                     };
                     pc.createOffer(
                         desc => { // createOffer on-success

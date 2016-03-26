@@ -1,18 +1,16 @@
-const gulp = require('gulp');
-const jshint = require('gulp-jshint');
-const sourcemaps = require('gulp-sourcemaps');
-const webserver = require('gulp-webserver');
+var gulp = require('gulp');
+var jshint = require('gulp-jshint');
+var sourcemaps = require('gulp-sourcemaps');
+var webserver = require('gulp-webserver');
 
-
-gulp.task('devel-build', function() {
+gulp.task('build-dev', function () {
     return gulp.src('src/*.js')
         .pipe(jshint()) // run their contents through jshint
         .pipe(jshint.reporter()) // report any findings from jshint
         .pipe(gulp.dest('testapp/out'));
 });
 
-
-gulp.task('devel-serve', function() {
+gulp.task('serve-dev', function () {
     gulp.src('testapp')
         .pipe(webserver({
             livereload: true,
@@ -24,7 +22,7 @@ gulp.task('devel-serve', function() {
         }));
 });
 
-gulp.task('build', function() {
+gulp.task('build-dist', function () {
     return gulp.src('src/*.js')
         .pipe(sourcemaps.init())
         .pipe(jshint()) // run their contents through jshint

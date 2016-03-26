@@ -1,58 +1,25 @@
 (function () {
     'use strict';
 
-    var c = null;
+    var client = null;
+    var call = null;
 
-    document.querySelector('button#getSDP').onclick = getSDP;
-
-    document.querySelector('button#close').onclick = close;
-
-    document.querySelector('button#InitClient').onclick = () => {
+    document.querySelector('button#connect').onclick = () => {
         let wsUrl = 'ws://120.25.73.183:58080/capi/1?password=1';
         console.debug(`Connect ${wsUrl}...`);
-        c = new LinkRtcClient(wsUrl);
-
-        let rtcConfig = {
-            iceServers: [{
-                urls: ["stun:stun.web2sip.hes86.net"]
-            }],
-            iceTransportPolicy: 'all'
-        };
-
-        c.connect()
+        client = new LinkRtcClient(wsUrl);
+        client.connect()
             .then(() => {
-                console.debug('Connected!');
+                console.debug('web-socket connected!');
             })
             .catch(error => {
-                console.error('connect:', error);
+                console.error('web-socket connect error:', error);
             });
     };
-
-    document.querySelector('button#echo').onclick = () => {
-        c.request('echo', ['hello'])
-            .then(result => {
-                console.log('echo:', result);
-            })
-            .catch(error => {
-                console.error('echo:', error);
-            });
-    };
-
-    document.querySelector('button#delayEcho').onclick = () => {
-        c.request('delayEcho', ['hello', 3000])
-            .then(result => {
-                console.log('delayEcho:', result);
-            })
-            .catch(error => {
-                console.error('echo:', error);
-            });
-    };
-
-    var call = null;
 
     document.querySelector('button#makeCall').onclick = () => {
         console.log('makeCall ...');
-        c.makeCall({
+        client.makeCall({
                 toUrl: 'sip:user1@sip.web2sip.hes86.net',
                 configuration: {
                     iceServers: [{
@@ -60,10 +27,10 @@
                     }],
                     iceTransportPolicy: 'all'
                 },
-                onAnswer: (call) => {
+                onAnswer: call => {
                     console.log(`[${call.data.cid}] Answer`);
                 },
-                onRelease: (call) => {
+                onRelease: call => {
                     console.log(`[${call.data.cid}] Release`);
                 },
                 onStateChange: (call, priorState, currentState) => {
@@ -81,12 +48,33 @@
 
     document.querySelector('button#dropCall').onclick = () => {
         console.log(`dropCall (cid=${call.data.cid})...`);
-        c.dropCall(call)
+        client.dropCall(call)
             .then(result => {
                 console.log('dropCall => ', result);
             })
             .catch(error => {
                 console.error('dropCall error:', error);
+            });
+    };
+
+
+    document.querySelector('button#echo').onclick = () => {
+        client.request('echo', ['hello'])
+            .then(result => {
+                console.log('echo:', result);
+            })
+            .catch(error => {
+                console.error('echo:', error);
+            });
+    };
+
+    document.querySelector('button#delayEcho').onclick = () => {
+        client.request('delayEcho', ['hello', 3000])
+            .then(result => {
+                console.log('delayEcho:', result);
+            })
+            .catch(error => {
+                console.error('echo:', error);
             });
     };
 

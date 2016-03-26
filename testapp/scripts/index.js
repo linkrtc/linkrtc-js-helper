@@ -18,14 +18,6 @@
             }],
             iceTransportPolicy: 'all'
         };
-        console.debug('prepareRtc ...');
-        c.prepareRtc(rtcConfig)
-            .then(() => {
-                console.debug('prepareRtc: OK!');
-            })
-            .catch(error => {
-                console.log('prepareRtc: ', error)
-            });
 
         c.connect()
             .then(() => {
@@ -60,18 +52,24 @@
 
     document.querySelector('button#makeCall').onclick = () => {
         console.log('makeCall ...');
-        c.makeCall(
-            'sip:user1@sip.web2sip.hes86.net',
-            remoteSdp => {
-                console.log('onAnswer: ', remoteSdp);
-            },
-            () => {
-                console.log('onRelease: ');
-            },
-            state => {
-                console.log('onStateChange: ', state);
-            }
-            )
+        c.makeCall({
+                toUrl: 'sip:user1@sip.web2sip.hes86.net',
+                configuration: {
+                    iceServers: [{
+                        urls: ["stun:stun.web2sip.hes86.net"]
+                    }],
+                    iceTransportPolicy: 'all'
+                },
+                onAnswer: (call) => {
+                    console.log(`[${call.data.cid}] Answer`);
+                },
+                onRelease: (call) => {
+                    console.log(`[${call.data.cid}] Release`);
+                },
+                onStateChange: (call, priorState, currentState) => {
+                    console.log(`[${call.data.cid}] StateChange ${priorState} --> ${currentState}`);
+                }
+            })
             .then(result => {
                 call = result;
                 console.log(`makeCall => cid=${result.data.cid}`);
@@ -88,7 +86,7 @@
                 console.log('dropCall => ', result);
             })
             .catch(error => {
-                console.error('makeCall err:', error);
+                console.error('dropCall error:', error);
             });
     };
 

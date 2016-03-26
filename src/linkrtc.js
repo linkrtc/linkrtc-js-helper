@@ -19,15 +19,12 @@ class LinkRtcRpcError extends LinkRtcBaseError {
 
 
 class LinkRtcCall {
-    constructor(data, onAnswer = null, onRelease = null, onStateChange = null) {
-        this._data = data;
-        this._onAnswer = onAnswer;
-        this._onRelease = onRelease;
-        this._onStateChange = onStateChange;
-    }
-
-    get data() {
-        return this._data;
+    constructor(data, pc, onAnswer = null, onRelease = null, onStateChange = null) {
+        this.data = data;
+        this.pc = pc;
+        this.onAnswer = onAnswer;
+        this.onRelease = onRelease;
+        this.onStateChange = onStateChange;
     }
 }
 
@@ -74,17 +71,17 @@ class LinkRtcClient {
                 let cid = data.params[0];
                 let sdp = data.params[1];
                 let call = this._calls[cid];
-                sdp = LinkRtcClient.maybeAddLineBreakToEnd(sdp);
+                sdp = this.maybeAddLineBreakToEnd(sdp);
                 let desc = new RTCSessionDescription({
                     type: 'answer',
                     sdp: sdp
                 });
-                this._pc.setRemoteDescription(
+                call.pc.setRemoteDescription(
                     desc, // SDP
                     () => { // successCallback
                         if (call)
-                            if (call._onAnswer) // 远端接听的回调！！
-                                call._onAnswer(sdp);
+                            if (call.onAnswer) // 远端接听的回调！！
+                                call.onAnswer(call);
                     },
                     errorInfo => { // errorCallback
                         // TODO: 错误处理，要挂断！！！
@@ -95,28 +92,30 @@ class LinkRtcClient {
                 let cid = data.params[0];
                 let call = this._calls[cid];
                 delete this._calls[cid];
-                if (call)
-                    if (call._onRelease)
-                        call._onRelease();
+                call.pc.close();
+                call.pc = null;
+                if (call.onRelease)
+                    call.onRelease(call);
             } else if (data.method == 'onCallStateChanged') {
                 let cid = data.params[0];
-                let state = data.params[1];
+                let currentState = data.params[1];
                 let call = this._calls[cid];
-                if (call)
-                    if (call._onStateChange)
-                        call._onStateChange(state);
+                let priorState = call.state;
+                call.state = currentState;
+                    if (call.onStateChange)
+                        call.onStateChange(call, priorState, currentState);
             } else {
                 throw new Error(`unknown method ""${data.method}`);
             }
         }
     }
 
-    static makeID() {
+    makeID() {
         return (Date.now().toString(36) + Math.random().toString(36).substr(2, 5)).toUpperCase();
     }
 
     // Workaround for crbug/322756.
-    static maybeAddLineBreakToEnd(sdp) {
+    maybeAddLineBreakToEnd(sdp) {
         let endWithLineBreak = new RegExp(/\n$/);
         if (!endWithLineBreak.test(sdp)) {
             return sdp + '\n';
@@ -152,7 +151,7 @@ class LinkRtcClient {
 
     request(method, params = [], timeout = 30000) {
         return new Promise((resolve, reject) => {
-            let requestID = LinkRtcClient.makeID();
+            let requestID = this.makeID();
             let timeoutID = null;
             let data = {
                 jsonrpc: '2.0',
@@ -177,47 +176,38 @@ class LinkRtcClient {
         });
     }
 
-    makeCall(to, onAnswer = null, onRelease = null, onStateChange = null) {
-        to = String(to || '');
-        return new Promise((resolve, reject) => {
-            this.request('makeCall', [this._pc.localDescription.sdp, to])
-                .then(callData => {
-                    let call = this._calls[callData.cid] = new LinkRtcCall(callData, onAnswer, onRelease, onStateChange);
-                    resolve(call);
-                })
-                .catch(error => {
-                    reject(error);
-                });
-        });
-    }
+    makeCall({toUrl, configuration, constraints = {}, iceTimeout=5000, onAnswer = null, onRelease = null, onStateChange = null}) {
+        toUrl = String(toUrl || '');
+        let mediaOptions = {
+            audio: true,
+            video: false
+        };
+        let offerOptions = {
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: false
+        };
+        let pc = null;
 
-    dropCall(call) {
         return new Promise((resolve, reject) => {
-            this.request('dropCall', [call.data.cid])
-                .then(result => {
-                    resolve(result);
-                })
-                .catch(error => {
-                    reject(error);
-                });
-        });
-    }
+            let iceTimeoutId = null;
 
-    prepareRtc(configuration, constraints = {}) {
-        return new Promise((resolve, reject) => {
-            let mediaOptions = {
-                audio: true,
-                video: false
+            let onIceComplete = function (self) {
+                if (iceTimeoutId)
+                    clearTimeout(iceTimeoutId);
+                self.request('makeCall', [pc.localDescription.sdp, toUrl])
+                    .then(callData => {
+                        let call = self._calls[callData.cid] = new LinkRtcCall(callData, pc, onAnswer, onRelease, onStateChange);
+                        resolve(call);
+                    })
+                    .catch(error => {
+                        reject(error);
+                    });
             };
-            let offerOptions = {
-                offerToReceiveAudio: true,
-                offerToReceiveVideo: false
-            };
-            let pc = null;
+
             navigator.getUserMedia(
                 mediaOptions, // navigator.getUserMedia options
                 stream => { // navigator.getUserMedia on-success
-                    pc = this._pc = new RTCPeerConnection(configuration, constraints);
+                    pc = new RTCPeerConnection(configuration, constraints);
                     pc.addStream(stream);
                     pc.onicecandidate = event => {
                         if (!event.candidate) // Local ICE candidate OK!
@@ -228,6 +218,11 @@ class LinkRtcClient {
                             pc.setLocalDescription(
                                 desc, // sessionDescription
                                 () => { //successCallback
+                                    iceTimeoutId = setTimeout(()=> {
+                                        iceTimeoutId = null;
+                                        console.warn('ICE Candidate timeout, consider as completed.');
+                                        onIceComplete(this);
+                                    }, iceTimeout);
                                 },
                                 errorInfo => { // errorCallback
                                     reject(errorInfo);
@@ -244,6 +239,18 @@ class LinkRtcClient {
                     reject(error);
                 }
             );
+        });
+    }
+
+    dropCall(call) {
+        return new Promise((resolve, reject) => {
+            this.request('dropCall', [call.data.cid])
+                .then(result => {
+                    resolve(result);
+                })
+                .catch(error => {
+                    reject(error);
+                });
         });
     }
 

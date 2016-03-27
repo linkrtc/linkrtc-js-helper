@@ -27,6 +27,7 @@
                     }],
                     iceTransportPolicy: 'all'
                 },
+                audioPlayer: document.querySelector('audio#remoteAudio'),
                 onAnswer: call => {
                     console.log(`[${call.data.cid}] Answer`);
                 },

@@ -102,8 +102,8 @@ class LinkRtcClient {
                 let call = this._calls[cid];
                 let priorState = call.state;
                 call.state = currentState;
-                    if (call.onStateChange)
-                        call.onStateChange(call, priorState, currentState);
+                if (call.onStateChange)
+                    call.onStateChange(call, priorState, currentState);
             } else {
                 throw new Error(`unknown method ""${data.method}`);
             }
@@ -176,7 +176,7 @@ class LinkRtcClient {
         });
     }
 
-    makeCall({toUrl, configuration, constraints = {}, iceTimeout=5000, onAnswer = null, onRelease = null, onStateChange = null}) {
+    makeCall({toUrl, configuration, audioPlayer, constraints = {}, iceTimeout=5000, onAnswer = null, onRelease = null, onStateChange = null}) {
         toUrl = String(toUrl || '');
         let mediaOptions = {
             audio: true,
@@ -208,6 +208,13 @@ class LinkRtcClient {
                 mediaOptions, // navigator.getUserMedia options
                 stream => { // navigator.getUserMedia on-success
                     pc = new RTCPeerConnection(configuration, constraints);
+                    pc.onaddstream = event => {
+                        console.log("Add Stream: ", event.stream);
+                        audioPlayer.srcObject = event.stream;
+                    };
+                    pc.onremovestream = event => {
+                        console.log("Remove Stream: ", event.stream);
+                    };
                     pc.addStream(stream);
                     pc.onicecandidate = event => {
                         if (!event.candidate) // Local ICE candidate OK!

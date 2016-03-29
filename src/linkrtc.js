@@ -30,12 +30,32 @@ class LinkRtcCall {
 
 
 class LinkRtcClient {
-    constructor(url) {
+    constructor({
+        url,
+        pcConfiguration,
+        pcConstraints = {},
+        audioPlayer,
+        iceTimeout=5000,
+        onCallIncoming = null,
+        onCallAnswer = null,
+        onCallRelease = null,
+        onCallStateChange = null
+    }) {
         this._url = url;
         this._webSocket = null;
         this._pendingRequests = {};
         this._calls = {};
-        this._pc = null;
+        this._localStream = null;
+        this._callHandlers = {
+            onCallIncoming: onCallIncoming,
+            onCallAnswer: onCallAnswer,
+            onCallRelease: onCallRelease,
+            onCallStateChange: onCallStateChange
+        };
+        this._pcConfiguration = pcConfiguration;
+        this._pcConstraints = pcConstraints;
+        this._audioPlayer = audioPlayer;
+        this._iceTimeout = iceTimeout;
     }
 
     _popPendingRequest(requestID) {
@@ -46,7 +66,7 @@ class LinkRtcClient {
         return pendingRequest === undefined ? null : pendingRequest;
     }
 
-    _onmessage(message) {
+    _onMessage(message) {
         let data = JSON.parse(message.data);
         if ('result' in data) {
             if (data.id) {
@@ -104,7 +124,22 @@ class LinkRtcClient {
                 call.state = currentState;
                 if (call.onStateChange)
                     call.onStateChange(call, priorState, currentState);
-            } else {
+            } else if (data.method == 'onCallIncoming') {
+                let callData = data.params[0];
+                // RtcPeerConnection !!!!
+                let remote_sdp = callData.remote_sdp;
+
+                //
+                let call = self._calls[callData.cid] = new LinkRtcCall(
+                    callData,
+                    pc,
+                    this._callHandlers.onCallAnswer,
+                    this._callHandlers.onCallRelease,
+                    this._callHandlers.onCallStateChange
+                );
+                this._callHandlers.onCallIncoming(call);
+            }
+            else {
                 throw new Error(`unknown method ""${data.method}`);
             }
         }
@@ -131,10 +166,31 @@ class LinkRtcClient {
         return this._webSocket;
     }
 
+    setLocalAudio(stream = null) {
+        return new Promise((resolve, reject) => {
+            if (stream) {
+                this._localStream = stream;
+                resolve(stream);
+            } else {
+                navigator.getUserMedia(
+                    {audio: true, video: false}, // navigator.getUserMedia options
+                    stream => { // navigator.getUserMedia on-success
+                        this._localStream = stream;
+                        resolve();
+                    },
+                    error => { // navigator.getUserMedia on-error
+                        reject(error);
+                    }
+                );
+            }
+        });
+    }
+
+
     connect() {
         return new Promise((resolve, reject) => {
             this._webSocket = new WebSocket(this._url);
-            this._webSocket.onmessage = this._onmessage.bind(this);
+            this._webSocket.onmessage = this._onMessage.bind(this);
             this._webSocket.onclose = close => {
                 this._webSocket = null;
                 reject(close);
@@ -176,27 +232,28 @@ class LinkRtcClient {
         });
     }
 
-    makeCall({toUrl, configuration, audioPlayer, constraints = {}, iceTimeout=5000, onAnswer = null, onRelease = null, onStateChange = null}) {
-        toUrl = String(toUrl || '');
-        let mediaOptions = {
-            audio: true,
-            video: false
-        };
+    makeCall(to) {
+        to = String(to || '');
         let offerOptions = {
             offerToReceiveAudio: true,
             offerToReceiveVideo: false
         };
         let pc = null;
-
         return new Promise((resolve, reject) => {
             let iceTimeoutId = null;
 
-            let onIceComplete = function (self) {
+            let onIceComplete = self => {
                 if (iceTimeoutId)
                     clearTimeout(iceTimeoutId);
-                self.request('makeCall', [pc.localDescription.sdp, toUrl])
+                self.request('makeCall', [pc.localDescription.sdp, to])
                     .then(callData => {
-                        let call = self._calls[callData.cid] = new LinkRtcCall(callData, pc, onAnswer, onRelease, onStateChange);
+                        let call = self._calls[callData.cid] = new LinkRtcCall(
+                            callData,
+                            pc,
+                            this._callHandlers.onCallAnswer,
+                            this._callHandlers.onCallRelease,
+                            this._callHandlers.onCallStateChange
+                        );
                         resolve(call);
                     })
                     .catch(error => {
@@ -204,47 +261,39 @@ class LinkRtcClient {
                     });
             };
 
-            navigator.getUserMedia(
-                mediaOptions, // navigator.getUserMedia options
-                stream => { // navigator.getUserMedia on-success
-                    pc = new RTCPeerConnection(configuration, constraints);
-                    pc.onaddstream = event => {
-                        console.log("Add Stream: ", event.stream);
-                        audioPlayer.srcObject = event.stream;
-                    };
-                    pc.onremovestream = event => {
-                        console.log("Remove Stream: ", event.stream);
-                    };
-                    pc.addStream(stream);
-                    pc.onicecandidate = event => {
-                        if (!event.candidate) // Local ICE candidate OK!
-                            resolve();
-                    };
-                    pc.createOffer(
-                        desc => { // createOffer on-success
-                            pc.setLocalDescription(
-                                desc, // sessionDescription
-                                () => { //successCallback
-                                    iceTimeoutId = setTimeout(()=> {
-                                        iceTimeoutId = null;
-                                        console.warn('ICE Candidate timeout, consider as completed.');
-                                        onIceComplete(this);
-                                    }, iceTimeout);
-                                },
-                                errorInfo => { // errorCallback
-                                    reject(errorInfo);
-                                }
-                            );
+            pc = new RTCPeerConnection(this._pcConfiguration, this._pcConstraints);
+            pc.onaddstream = event => {
+                console.log("Add Stream: ", event.stream);
+                this._audioPlayer.srcObject = event.stream;
+            };
+            pc.onremovestream = event => {
+                console.log("Remove Stream: ", event.stream);
+            };
+            pc.addStream(this._localStream);
+            pc.onicecandidate = event => {
+                if (!event.candidate) // Local ICE candidate OK!
+                    onIceComplete(this);
+            };
+            pc.createOffer(
+                desc => { // createOffer on-success
+                    pc.setLocalDescription(
+                        desc, // sessionDescription
+                        () => { //successCallback
+                            iceTimeoutId = setTimeout(()=> {
+                                iceTimeoutId = null;
+                                console.warn('ICE Candidate timeout, consider as completed.');
+                                onIceComplete(this);
+                            }, this._iceTimeout);
                         },
-                        error => { // createOffer on-error
-                            reject(error);
-                        },
-                        offerOptions // createOffer options
+                        errorInfo => { // errorCallback
+                            reject(errorInfo);
+                        }
                     );
                 },
-                error => { // navigator.getUserMedia on-error
+                error => { // createOffer on-error
                     reject(error);
-                }
+                },
+                offerOptions // createOffer options
             );
         });
     }

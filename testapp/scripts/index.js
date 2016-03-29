@@ -4,10 +4,45 @@
     var client = null;
     var call = null;
 
+    document.querySelector('button#new').onclick = () => {
+        let wsUrl = 'ws://120.25.73.183:58080/capi/18602015268?password=123';
+        console.log(`new Client at ${wsUrl}`);
+        client = new LinkRtcClient({
+            url: wsUrl,
+            pcConfiguration: {
+                iceServers: [{
+                    urls: ["stun:stun.linkrtc.com"]
+                }],
+                iceTransportPolicy: 'all'
+            },
+            audioPlayer: document.querySelector('audio#remoteAudio'),
+            onCallIncoming: call => {
+
+            },
+            onCallAnswer: call => {
+                console.log(`[${call.data.cid}] Answer`);
+            },
+            onCallRelease: call => {
+                console.log(`[${call.data.cid}] Release`);
+            },
+            onCallStateChange: (call, priorState, currentState) => {
+                console.log(`[${call.data.cid}] StateChange ${priorState} --> ${currentState}`);
+            }
+        });
+        console.log(`connect object = ${client}`)
+    };
+
+    document.querySelector('button#addStream').onclick = () => {
+        client.setLocalAudio()
+            .then(() => {
+                console.debug('addStream OK!');
+            })
+            .catch(error => {
+                console.error('addStream error:', error);
+            });
+    };
+
     document.querySelector('button#connect').onclick = () => {
-        let wsUrl = 'ws://120.25.73.183:58080/capi/1?password=1';
-        console.debug(`Connect ${wsUrl}...`);
-        client = new LinkRtcClient(wsUrl);
         client.connect()
             .then(() => {
                 console.debug('web-socket connected!');
@@ -19,25 +54,7 @@
 
     document.querySelector('button#makeCall').onclick = () => {
         console.log('makeCall ...');
-        client.makeCall({
-                toUrl: 'sip:user1@sip.web2sip.hes86.net',
-                configuration: {
-                    iceServers: [{
-                        urls: ["stun:stun.web2sip.hes86.net"]
-                    }],
-                    iceTransportPolicy: 'all'
-                },
-                audioPlayer: document.querySelector('audio#remoteAudio'),
-                onAnswer: call => {
-                    console.log(`[${call.data.cid}] Answer`);
-                },
-                onRelease: call => {
-                    console.log(`[${call.data.cid}] Release`);
-                },
-                onStateChange: (call, priorState, currentState) => {
-                    console.log(`[${call.data.cid}] StateChange ${priorState} --> ${currentState}`);
-                }
-            })
+        client.makeCall('user1')
             .then(result => {
                 call = result;
                 console.log(`makeCall => cid=${result.data.cid}`);

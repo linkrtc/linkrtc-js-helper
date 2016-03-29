@@ -35,7 +35,7 @@ class LinkRtcClient {
         pcConfiguration,
         pcConstraints = {},
         audioPlayer,
-        iceTimeout=5000,
+        iceTimeout=30000,
         onCallIncoming = null,
         onCallAnswer = null,
         onCallRelease = null,
@@ -233,13 +233,8 @@ class LinkRtcClient {
     }
 
     makeCall(to) {
-        to = String(to || '');
-        let offerOptions = {
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: false
-        };
-        let pc = null;
         return new Promise((resolve, reject) => {
+            to = String(to || '');
             let iceTimeoutId = null;
 
             let onIceComplete = self => {
@@ -261,7 +256,7 @@ class LinkRtcClient {
                     });
             };
 
-            pc = new RTCPeerConnection(this._pcConfiguration, this._pcConstraints);
+            let pc = new RTCPeerConnection(this._pcConfiguration, this._pcConstraints);
             pc.onaddstream = event => {
                 console.log("Add Stream: ", event.stream);
                 this._audioPlayer.srcObject = event.stream;
@@ -293,7 +288,7 @@ class LinkRtcClient {
                 error => { // createOffer on-error
                     reject(error);
                 },
-                offerOptions // createOffer options
+                {offerToReceiveAudio: true, offerToReceiveVideo: false} // createOffer options
             );
         });
     }

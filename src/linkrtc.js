@@ -268,27 +268,20 @@ class LinkRtcClient {
                     }
                 }
             };
-            pc.createOffer(
-                desc => { // createOffer on-success
-                    pc.setLocalDescription(
-                        desc, // sessionDescription
-                        () => { //successCallback
-                            iceTimeoutId = setTimeout(()=> {
-                                iceTimeoutId = null;
-                                console.warn('ICE Candidate timeout, consider as completed.');
-                                onIceComplete();
-                            }, iceTimeout || this._iceTimeout);
-                        },
-                        errorInfo => { // errorCallback
-                            reject(errorInfo);
-                        }
-                    );
-                },
-                error => { // createOffer on-error
+            pc.createOffer({offerToReceiveAudio: true, offerToReceiveVideo: false}) // createOffer options
+                .then(desc => {
+                    return pc.setLocalDescription(desc);
+                })
+                .then(() => { //successCallback
+                    iceTimeoutId = setTimeout(()=> {
+                        iceTimeoutId = null;
+                        console.warn('ICE Candidate timeout, consider as completed.');
+                        onIceComplete();
+                    }, iceTimeout || this._iceTimeout);
+                })
+                .catch(error => {
                     reject(error);
-                },
-                {offerToReceiveAudio: true, offerToReceiveVideo: false} // createOffer options
-            );
+                });
         });
     }
 
@@ -307,10 +300,6 @@ class LinkRtcClient {
     answerCall(call, iceTimeout = null) {
         return new Promise((resolve, reject) => {
             let iceTimeoutId = null;
-            let offer = new RTCSessionDescription({
-                type: 'offer',
-                sdp: call.data.remote_sdp
-            });
             let pc = call.pc = new RTCPeerConnection(this._pcConfiguration, this._pcConstraints);
             let onIceComplete = () => {
                 this.request('answerCall', [call.data.cid, pc.localDescription.sdp])
@@ -338,35 +327,27 @@ class LinkRtcClient {
                     }
                 }
             };
-            pc.setRemoteDescription(
-                offer, // sessionDescription
-                () => { // sessionDescription
-                    pc.createAnswer(
-                        answer => { // createAnswer on-success
-                            pc.setLocalDescription(
-                                answer, // sessionDescription
-                                () => { //successCallback
-                                    iceTimeoutId = setTimeout(()=> {
-                                        iceTimeoutId = null;
-                                        console.warn('ICE Candidate timeout, consider as completed.');
-                                        onIceComplete();
-                                    }, iceTimeout || this._iceTimeout);
-                                },
-                                errorInfo => { // errorCallback
-                                    reject(errorInfo);
-                                }
-                            );
-                        },
-                        error => { // createAnswer on-error
-                            reject(error);
-                        },
-                        {offerToReceiveAudio: true, offerToReceiveVideo: false} // createOffer options
-                    );
-                },
-                errorInfo => { // errorCallback
-                    reject(errorInfo);
-                }
-            );
+            let offer = new RTCSessionDescription({
+                type: 'offer',
+                sdp: this.constructor.maybeAddLineBreakToEnd(call.data.remote_sdp)
+            });
+            pc.setRemoteDescription(offer)
+                .then(() => { // setRemoteDescription on-success
+                    return pc.createAnswer({offerToReceiveAudio: true, offerToReceiveVideo: false});
+                })
+                .then(desc => {
+                    return pc.setLocalDescription(desc);
+                })
+                .then(()=> {
+                    iceTimeoutId = setTimeout(()=> {
+                        iceTimeoutId = null;
+                        console.warn('ICE Candidate timeout, consider as completed.');
+                        onIceComplete();
+                    }, iceTimeout || this._iceTimeout);
+                })
+                .catch(error => {
+                    reject(error);
+                });
         });
     }
 

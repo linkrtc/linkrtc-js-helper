@@ -91,7 +91,7 @@ class LinkRtcClient {
                 let cid = data.params[0];
                 let sdp = data.params[1];
                 let call = this._calls[cid];
-                sdp = this.maybeAddLineBreakToEnd(sdp);
+                sdp = this.constructor.maybeAddLineBreakToEnd(sdp);
                 let desc = new RTCSessionDescription({
                     type: 'answer',
                     sdp: sdp
@@ -145,12 +145,12 @@ class LinkRtcClient {
         }
     }
 
-    makeID() {
+    static makeID() {
         return (Date.now().toString(36) + Math.random().toString(36).substr(2, 5)).toUpperCase();
     }
 
     // Workaround for crbug/322756.
-    maybeAddLineBreakToEnd(sdp) {
+    static maybeAddLineBreakToEnd(sdp) {
         let endWithLineBreak = new RegExp(/\n$/);
         if (!endWithLineBreak.test(sdp)) {
             return sdp + '\n';
@@ -162,11 +162,7 @@ class LinkRtcClient {
         return this._url;
     }
 
-    get webSocket() {
-        return this._webSocket;
-    }
-
-    setLocalAudio(stream = null) {
+    setLocalAudioStream(stream = null) {
         return new Promise((resolve, reject) => {
             if (stream) {
                 this._localStream = stream;
@@ -207,7 +203,7 @@ class LinkRtcClient {
 
     request(method, params = [], timeout = 30000) {
         return new Promise((resolve, reject) => {
-            let requestID = this.makeID();
+            let requestID = this.constructor.makeID();
             let timeoutID = null;
             let data = {
                 jsonrpc: '2.0',
@@ -238,8 +234,6 @@ class LinkRtcClient {
             let iceTimeoutId = null;
 
             let onIceComplete = self => {
-                if (iceTimeoutId)
-                    clearTimeout(iceTimeoutId);
                 self.request('makeCall', [pc.localDescription.sdp, to])
                     .then(callData => {
                         let call = self._calls[callData.cid] = new LinkRtcCall(
@@ -266,8 +260,13 @@ class LinkRtcClient {
             };
             pc.addStream(this._localStream);
             pc.onicecandidate = event => {
-                if (!event.candidate) // Local ICE candidate OK!
-                    onIceComplete(this);
+                if (!event.candidate) {// Local ICE candidate OK!
+                    if (iceTimeoutId) {
+                        clearTimeout(iceTimeoutId);
+                        iceTimeoutId = null;
+                        onIceComplete(this);
+                    }
+                }
             };
             pc.createOffer(
                 desc => { // createOffer on-success

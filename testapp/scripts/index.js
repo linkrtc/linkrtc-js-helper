@@ -32,13 +32,13 @@
         console.log(`connect object = ${client}`)
     };
 
-    document.querySelector('button#addStream').onclick = () => {
-        client.setLocalAudio()
+    document.querySelector('button#setLocalAudioStream').onclick = () => {
+        client.setLocalAudioStream()
             .then(() => {
-                console.debug('addStream OK!');
+                console.debug('setLocalAudioStream OK!');
             })
             .catch(error => {
-                console.error('addStream error:', error);
+                console.error('setLocalAudioStream error:', error);
             });
     };
 

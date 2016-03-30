@@ -354,13 +354,13 @@ class LinkRtcClient {
                                 },
                                 errorInfo => { // errorCallback
                                     reject(errorInfo);
-                                },
-                                {offerToReceiveAudio: true, offerToReceiveVideo: false} // createOffer options
+                                }
                             );
                         },
                         error => { // createAnswer on-error
                             reject(error);
-                        }
+                        },
+                        {offerToReceiveAudio: true, offerToReceiveVideo: false} // createOffer options
                     );
                 },
                 errorInfo => { // errorCallback

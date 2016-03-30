@@ -311,18 +311,11 @@ class LinkRtcClient {
                 type: 'offer',
                 sdp: call.data.remote_sdp
             });
-            let pc = new RTCPeerConnection(this._pcConfiguration, this._pcConstraints);
+            let pc = call.pc = new RTCPeerConnection(this._pcConfiguration, this._pcConstraints);
             let onIceComplete = () => {
                 this.request('answerCall', [call.data.cid, pc.localDescription.sdp])
-                    .then(callData => {
-                        let call = this._calls[callData.cid] = new LinkRtcCall(
-                            callData,
-                            pc,
-                            this._callHandlers.onCallAnswer,
-                            this._callHandlers.onCallRelease,
-                            this._callHandlers.onCallStateChange
-                        );
-                        resolve(call);
+                    .then(() => {
+                        resolve();
                     })
                     .catch(error => {
                         reject(error);

@@ -187,7 +187,6 @@ class LinkRtcClient {
     request(method, params = [], timeout = 30000) {
         return new Promise((resolve, reject) => {
             let requestID = this.constructor.makeID();
-            let timeoutID = null;
             let data = {
                 jsonrpc: '2.0',
                 id: requestID,
@@ -195,14 +194,10 @@ class LinkRtcClient {
                 params: params
             };
             this._webSocket.send(JSON.stringify(data));
-            if (timeout > 0) {
-                timeoutID = setTimeout(requestID => {
-                    let pendingRequest = this._popPendingRequest(requestID);
-                    if (pendingRequest) {
-                        pendingRequest.reject(new Error('Timeout'));
-                    }
-                }, timeout, requestID);
-            }
+            let timeoutID = setTimeout(_requestID => {
+                this._popPendingRequest(_requestID);
+                reject(new Error('Timeout'));
+            }, timeout, requestID);
             this._pendingRequests[requestID] = {
                 resolve: resolve,
                 reject: reject,
@@ -210,7 +205,7 @@ class LinkRtcClient {
             };
         });
     }
-
+    
     connect() {
         return new Promise((resolve, reject) => {
             this._webSocket = new WebSocket(this._url);
@@ -228,7 +223,6 @@ class LinkRtcClient {
             };
         });
     }
-
 
     makeCall(to, iceTimeout = null) {
         return new Promise((resolve, reject) => {

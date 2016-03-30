@@ -268,7 +268,10 @@ class LinkRtcClient {
                     }
                 }
             };
-            pc.createOffer({offerToReceiveAudio: true, offerToReceiveVideo: false}) // createOffer options
+            pc.createOffer({
+                    offerToReceiveAudio: true,
+                    offerToReceiveVideo: false
+                }) // createOffer options
                 .then(desc => {
                     return pc.setLocalDescription(desc);
                 })
@@ -333,7 +336,12 @@ class LinkRtcClient {
             });
             pc.setRemoteDescription(offer)
                 .then(() => { // setRemoteDescription on-success
-                    return pc.createAnswer({offerToReceiveAudio: true, offerToReceiveVideo: false});
+                    return pc.createAnswer({
+                        "mandatory": {
+                            "OfferToReceiveAudio": true,
+                            "OfferToReceiveVideo": true
+                        }
+                    });
                 })
                 .then(desc => {
                     return pc.setLocalDescription(desc);

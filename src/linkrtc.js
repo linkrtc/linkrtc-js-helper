@@ -58,6 +58,19 @@ class LinkRtcClient {
         this._iceTimeout = iceTimeout;
     }
 
+    static makeID() {
+        return (Date.now().toString(36) + Math.random().toString(36).substr(2, 5)).toUpperCase();
+    }
+
+    // Workaround for crbug/322756.
+    static maybeAddLineBreakToEnd(sdp) {
+        let endWithLineBreak = new RegExp(/\n$/);
+        if (!endWithLineBreak.test(sdp)) {
+            return sdp + '\n';
+        }
+        return sdp.replace(/\r?\n/g, "\r\n");
+    }
+
     _popPendingRequest(requestID) {
         let pendingRequest = this._pendingRequests[requestID];
         if (pendingRequest) {
@@ -126,13 +139,9 @@ class LinkRtcClient {
                     call.onStateChange(call, priorState, currentState);
             } else if (data.method == 'onCallIncoming') {
                 let callData = data.params[0];
-                // RtcPeerConnection !!!!
-                let remote_sdp = callData.remote_sdp;
-
-                //
                 let call = self._calls[callData.cid] = new LinkRtcCall(
                     callData,
-                    pc,
+                    null,
                     this._callHandlers.onCallAnswer,
                     this._callHandlers.onCallRelease,
                     this._callHandlers.onCallStateChange
@@ -143,19 +152,6 @@ class LinkRtcClient {
                 throw new Error(`unknown method ""${data.method}`);
             }
         }
-    }
-
-    static makeID() {
-        return (Date.now().toString(36) + Math.random().toString(36).substr(2, 5)).toUpperCase();
-    }
-
-    // Workaround for crbug/322756.
-    static maybeAddLineBreakToEnd(sdp) {
-        let endWithLineBreak = new RegExp(/\n$/);
-        if (!endWithLineBreak.test(sdp)) {
-            return sdp + '\n';
-        }
-        return sdp.replace(/\r?\n/g, "\r\n");
     }
 
     get url() {
@@ -179,25 +175,6 @@ class LinkRtcClient {
                     }
                 );
             }
-        });
-    }
-
-
-    connect() {
-        return new Promise((resolve, reject) => {
-            this._webSocket = new WebSocket(this._url);
-            this._webSocket.onmessage = this._onMessage.bind(this);
-            this._webSocket.onclose = close => {
-                this._webSocket = null;
-                reject(close);
-            };
-            this._webSocket.onerror = error => {
-                this._webSocket = null;
-                reject(error);
-            };
-            this._webSocket.onopen = open => {
-                resolve(open);
-            };
         });
     }
 
@@ -228,11 +205,30 @@ class LinkRtcClient {
         });
     }
 
-    makeCall(to) {
+    connect() {
+        return new Promise((resolve, reject) => {
+            this._webSocket = new WebSocket(this._url);
+            this._webSocket.onmessage = this._onMessage.bind(this);
+            this._webSocket.onclose = close => {
+                this._webSocket = null;
+                reject(close);
+            };
+            this._webSocket.onerror = error => {
+                this._webSocket = null;
+                reject(error);
+            };
+            this._webSocket.onopen = open => {
+                resolve(open);
+            };
+        });
+    }
+
+
+    makeCall(to, iceTimeout = null) {
         return new Promise((resolve, reject) => {
             to = String(to || '');
             let iceTimeoutId = null;
-
+            let pc = new RTCPeerConnection(this._pcConfiguration, this._pcConstraints);
             let onIceComplete = self => {
                 self.request('makeCall', [pc.localDescription.sdp, to])
                     .then(callData => {
@@ -249,8 +245,6 @@ class LinkRtcClient {
                         reject(error);
                     });
             };
-
-            let pc = new RTCPeerConnection(this._pcConfiguration, this._pcConstraints);
             pc.onaddstream = event => {
                 console.log("Add Stream: ", event.stream);
                 this._audioPlayer.srcObject = event.stream;
@@ -277,7 +271,7 @@ class LinkRtcClient {
                                 iceTimeoutId = null;
                                 console.warn('ICE Candidate timeout, consider as completed.');
                                 onIceComplete(this);
-                            }, this._iceTimeout);
+                            }, iceTimeout || this._iceTimeout);
                         },
                         errorInfo => { // errorCallback
                             reject(errorInfo);
@@ -301,6 +295,73 @@ class LinkRtcClient {
                 .catch(error => {
                     reject(error);
                 });
+        });
+    }
+
+    answerCall(call, iceTimeout = null) {
+        return new Promise((resolve, reject) => {
+            let iceTimeoutId = null;
+            let offer = new RTCSessionDescription({
+                type: 'offer',
+                sdp: call.data.remote_sdp
+            });
+            let pc = new RTCPeerConnection(this._pcConfiguration, this._pcConstraints);
+            let onIceComplete = self => {
+                self.request('makeCall', [pc.localDescription.sdp, to])
+                    .then(callData => {
+                        call.pc = pc;
+                        resolve();
+                    })
+                    .catch(error => {
+                        reject(error);
+                    });
+            };
+            pc.onaddstream = event => {
+                console.log("Add Stream: ", event.stream);
+                this._audioPlayer.srcObject = event.stream;
+            };
+            pc.onremovestream = event => {
+                console.log("Remove Stream: ", event.stream);
+            };
+            pc.addStream(this._localStream);
+            pc.onicecandidate = event => {
+                if (!event.candidate) {// Local ICE candidate OK!
+                    if (iceTimeoutId) {
+                        clearTimeout(iceTimeoutId);
+                        iceTimeoutId = null;
+                        onIceComplete(this);
+                    }
+                }
+            };
+            pc.setRemoteDescription(
+                offer, // sessionDescription
+                () => { // sessionDescription
+                    pc.createAnswer(
+                        answer => { // createAnswer on-success
+                            pc.setLoalDescription(
+                                answer, // sessionDescription
+                                () => { //successCallback
+                                    iceTimeoutId = setTimeout(()=> {
+                                        iceTimeoutId = null;
+                                        console.warn('ICE Candidate timeout, consider as completed.');
+                                        onIceComplete(this);
+                                    }, iceTimeout || this._iceTimeout);
+                                },
+                                errorInfo => { // errorCallback
+                                    reject(errorInfo);
+                                },
+                                {offerToReceiveAudio: true, offerToReceiveVideo: false} // createOffer options
+                            );
+                        },
+                        error => { // createAnswer on-error
+                            reject(error);
+                        }
+                    );
+                },
+                errorInfo => { // errorCallback
+                    reject(errorInfo);
+                }
+            );
         });
     }
 

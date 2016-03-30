@@ -18,7 +18,7 @@
             audioPlayer: document.querySelector('audio#remoteAudio'),
             onCallIncoming: _call => {
                 call = _call;
-                console.log(`CallIncoming: ${call}`);
+                console.log(`CallIncoming: ${JSON.stringify(call.data)}`);
             },
             onCallAnswer: call => {
                 console.log(`[${call.data.cid}] Answer`);

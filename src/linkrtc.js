@@ -147,6 +147,12 @@ class LinkRtcClient {
                     this._callHandlers.onCallStateChange
                 );
                 this._callHandlers.onCallIncoming(call);
+                this.request('ringCall', [call.data.cid]) // ringCall
+                    .then(() => {
+                    })
+                    .catch(error => {
+                        console.error(error);
+                    });
             }
             else {
                 throw new Error(`unknown method ""${data.method}`);
@@ -229,10 +235,10 @@ class LinkRtcClient {
             to = String(to || '');
             let iceTimeoutId = null;
             let pc = new RTCPeerConnection(this._pcConfiguration, this._pcConstraints);
-            let onIceComplete = self => {
-                self.request('makeCall', [pc.localDescription.sdp, to])
+            let onIceComplete = () => {
+                this.request('makeCall', [pc.localDescription.sdp, to])
                     .then(callData => {
-                        let call = self._calls[callData.cid] = new LinkRtcCall(
+                        let call = this._calls[callData.cid] = new LinkRtcCall(
                             callData,
                             pc,
                             this._callHandlers.onCallAnswer,
@@ -258,7 +264,7 @@ class LinkRtcClient {
                     if (iceTimeoutId) {
                         clearTimeout(iceTimeoutId);
                         iceTimeoutId = null;
-                        onIceComplete(this);
+                        onIceComplete();
                     }
                 }
             };
@@ -270,7 +276,7 @@ class LinkRtcClient {
                             iceTimeoutId = setTimeout(()=> {
                                 iceTimeoutId = null;
                                 console.warn('ICE Candidate timeout, consider as completed.');
-                                onIceComplete(this);
+                                onIceComplete();
                             }, iceTimeout || this._iceTimeout);
                         },
                         errorInfo => { // errorCallback
@@ -306,11 +312,17 @@ class LinkRtcClient {
                 sdp: call.data.remote_sdp
             });
             let pc = new RTCPeerConnection(this._pcConfiguration, this._pcConstraints);
-            let onIceComplete = self => {
-                self.request('makeCall', [pc.localDescription.sdp, to])
+            let onIceComplete = () => {
+                this.request('answerCall', [call.data.cid, pc.localDescription.sdp])
                     .then(callData => {
-                        call.pc = pc;
-                        resolve();
+                        let call = this._calls[callData.cid] = new LinkRtcCall(
+                            callData,
+                            pc,
+                            this._callHandlers.onCallAnswer,
+                            this._callHandlers.onCallRelease,
+                            this._callHandlers.onCallStateChange
+                        );
+                        resolve(call);
                     })
                     .catch(error => {
                         reject(error);
@@ -329,7 +341,7 @@ class LinkRtcClient {
                     if (iceTimeoutId) {
                         clearTimeout(iceTimeoutId);
                         iceTimeoutId = null;
-                        onIceComplete(this);
+                        onIceComplete();
                     }
                 }
             };
@@ -344,7 +356,7 @@ class LinkRtcClient {
                                     iceTimeoutId = setTimeout(()=> {
                                         iceTimeoutId = null;
                                         console.warn('ICE Candidate timeout, consider as completed.');
-                                        onIceComplete(this);
+                                        onIceComplete();
                                     }, iceTimeout || this._iceTimeout);
                                 },
                                 errorInfo => { // errorCallback

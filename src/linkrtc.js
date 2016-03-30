@@ -139,7 +139,7 @@ class LinkRtcClient {
                     call.onStateChange(call, priorState, currentState);
             } else if (data.method == 'onCallIncoming') {
                 let callData = data.params[0];
-                let call = self._calls[callData.cid] = new LinkRtcCall(
+                let call = this._calls[callData.cid] = new LinkRtcCall(
                     callData,
                     null,
                     this._callHandlers.onCallAnswer,
@@ -338,7 +338,7 @@ class LinkRtcClient {
                 () => { // sessionDescription
                     pc.createAnswer(
                         answer => { // createAnswer on-success
-                            pc.setLoalDescription(
+                            pc.setLocalDescription(
                                 answer, // sessionDescription
                                 () => { //successCallback
                                     iceTimeoutId = setTimeout(()=> {

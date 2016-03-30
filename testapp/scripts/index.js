@@ -16,8 +16,9 @@
                 iceTransportPolicy: 'all'
             },
             audioPlayer: document.querySelector('audio#remoteAudio'),
-            onCallIncoming: call => {
-
+            onCallIncoming: _call => {
+                call = _call;
+                console.log(`CallIncoming: ${call}`);
             },
             onCallAnswer: call => {
                 console.log(`[${call.data.cid}] Answer`);
@@ -52,9 +53,21 @@
             });
     };
 
+    document.querySelector('button#answerCall').onclick = () => {
+        console.log('answerCall ...');
+        client.answerCall(call, 5000)
+            .then(result => {
+                call = result;
+                console.log(`answerCall OK`);
+            })
+            .catch(error => {
+                console.error('answerCall err:', error);
+            });
+    };
+
     document.querySelector('button#makeCall').onclick = () => {
         console.log('makeCall ...');
-        client.makeCall('user1')
+        client.makeCall('user1', 5000)
             .then(result => {
                 call = result;
                 console.log(`makeCall => cid=${result.data.cid}`);
